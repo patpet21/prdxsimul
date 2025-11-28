@@ -1,7 +1,7 @@
 
 import { JurisdictionData, AssetData, TokenizationCategory, AiRiskReport, EntityDetails, ProjectInfo, TokenizationState, TokenomicsData, QuizData } from '../types';
 import { MatchmakerPreferences } from '../prompts/matchmakerPrompts';
-import { GoogleGenAI } from "@google/genai";
+import { genAI, askGemini } from '../lib/googleClient'; // IMPORT NEW CLIENT
 import { GENERATE_BUSINESS_PLAN_PROMPT } from '../prompts/businessPlanPrompt';
 import { IMPROVE_DESCRIPTION_PROMPT } from '../prompts/projectPrompts';
 import { CHECK_TOKENIZABILITY_PROMPT } from '../prompts/tokenizabilityPrompts';
@@ -9,9 +9,8 @@ import { GET_ASSET_ADVICE_PROMPT, ESTIMATE_ASSET_SPECS_PROMPT } from '../prompts
 import { GENERATE_TOKEN_CONFIG_PROMPT, ESTIMATE_YIELDS_FEES_PROMPT, GENERATE_DEEP_STRATEGY_PROMPT } from '../prompts/tokenomicsPrompts';
 import { GENERATE_TOKEN_STRATEGY_PROMPT } from '../prompts/strategyPrompts';
 
-// --- CONFIGURATION ---
-const apiKey = process.env.API_KEY;
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+// Check availability
+const hasApiKey = !!process.env.API_KEY;
 
 // Helper to simulate network latency (fallback)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -30,13 +29,10 @@ const parseAiJson = (text: string) => {
 // --- PROJECT VISION AI ---
 
 export const improveProjectDescription = async (info: ProjectInfo, category: TokenizationCategory): Promise<string> => {
-  if (ai) {
+  if (hasApiKey) {
       try {
-          const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: IMPROVE_DESCRIPTION_PROMPT(info, category)
-          });
-          return response.text || info.description;
+          const text = await askGemini(IMPROVE_DESCRIPTION_PROMPT(info, category));
+          return text || info.description;
       } catch (e) {
           console.error("AI Error", e);
       }
@@ -60,8 +56,7 @@ export interface MatchmakerResult {
 export const getJurisdictionRecommendation = async (prefs: MatchmakerPreferences): Promise<MatchmakerResult | null> => {
   await delay(2000);
   
-  // Simple logic based on preferences (Mock fallback logic is robust enough for matchmaker for now, 
-  // but could be upgraded to AI if needed)
+  // Simple logic based on preferences (Mock fallback logic is robust enough for matchmaker for now)
   if (prefs.assetLocation === 'Domestic' && prefs.investorType.includes('Retail')) {
       return {
           jurisdiction: "United States (Reg A+)",
@@ -157,14 +152,14 @@ export interface TokenizabilityReport {
 }
 
 export const checkTokenizability = async (description: string, category?: string): Promise<TokenizabilityReport | null> => {
-  if (ai) {
+  if (hasApiKey) {
       try {
-          const response = await ai.models.generateContent({
+          const result = await genAI.models.generateContent({
               model: 'gemini-2.5-flash',
               contents: CHECK_TOKENIZABILITY_PROMPT(description, category),
               config: { responseMimeType: 'application/json' }
           });
-          const parsed = parseAiJson(response.text || '{}');
+          const parsed = parseAiJson(result.text || '{}');
           if (parsed && parsed.mainVerdict) return parsed;
       } catch (e) {
           console.error("AI Error", e);
@@ -219,14 +214,14 @@ export const generateQuiz = async (topic: string): Promise<QuizData | null> => {
 // --- TOKENOMICS & STRATEGY (UPDATED) ---
 
 export const generateTokenConfig = async (asset: AssetData, project: ProjectInfo) => {
-    if (ai) {
+    if (hasApiKey) {
         try {
-            const response = await ai.models.generateContent({
+            const result = await genAI.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: GENERATE_TOKEN_CONFIG_PROMPT(asset, project),
                 config: { responseMimeType: 'application/json' }
             });
-            return parseAiJson(response.text || '{}');
+            return parseAiJson(result.text || '{}');
         } catch (e) { console.error(e); }
     }
     await delay(1500);
@@ -243,14 +238,14 @@ export const generateTokenConfig = async (asset: AssetData, project: ProjectInfo
 };
 
 export const estimateYieldsAndFees = async (asset: AssetData, jurisdiction: JurisdictionData) => {
-    if (ai) {
+    if (hasApiKey) {
         try {
-            const response = await ai.models.generateContent({
+            const result = await genAI.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: ESTIMATE_YIELDS_FEES_PROMPT(asset, jurisdiction),
                 config: { responseMimeType: 'application/json' }
             });
-            return parseAiJson(response.text || '{}');
+            return parseAiJson(result.text || '{}');
         } catch (e) { console.error(e); }
     }
     await delay(1500);
@@ -265,14 +260,14 @@ export const estimateYieldsAndFees = async (asset: AssetData, jurisdiction: Juri
 };
 
 export const generateDeepStrategy = async (asset: AssetData, project: ProjectInfo) => {
-    if (ai) {
+    if (hasApiKey) {
         try {
-            const response = await ai.models.generateContent({
+            const result = await genAI.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: GENERATE_DEEP_STRATEGY_PROMPT(asset, project),
                 config: { responseMimeType: 'application/json' }
             });
-            return parseAiJson(response.text || '{}');
+            return parseAiJson(result.text || '{}');
         } catch (e) { console.error(e); }
     }
     await delay(1800);
@@ -287,14 +282,14 @@ export const generateDeepStrategy = async (asset: AssetData, project: ProjectInf
 // --- TOKEN STRATEGY (EDUCATIONAL) ---
 
 export const generateTokenStrategy = async (asset: AssetData, project: ProjectInfo, jurisdiction: JurisdictionData) => {
-    if (ai) {
+    if (hasApiKey) {
         try {
-            const response = await ai.models.generateContent({
+            const result = await genAI.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: GENERATE_TOKEN_STRATEGY_PROMPT(asset, project, jurisdiction),
                 config: { responseMimeType: 'application/json' }
             });
-            const parsed = parseAiJson(response.text || '{}');
+            const parsed = parseAiJson(result.text || '{}');
             if (parsed && parsed.whyTokenize) return parsed;
         } catch (e) {
             console.error("AI Error", e);
@@ -327,14 +322,14 @@ export const autoFillAssetGeneral = async (info: ProjectInfo, category: Tokeniza
 // --- NEW: ASSET ADVICE & SPECS ESTIMATION ---
 
 export const getAssetAdvice = async (category: string, type: string, location: string) => {
-    if (ai) {
+    if (hasApiKey) {
         try {
-            const response = await ai.models.generateContent({
+            const result = await genAI.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: GET_ASSET_ADVICE_PROMPT(category, type, location),
                 config: { responseMimeType: 'application/json' }
             });
-            const parsed = parseAiJson(response.text || '{}');
+            const parsed = parseAiJson(result.text || '{}');
             if (parsed) return parsed;
         } catch (e) {
             console.error("AI Error", e);
@@ -349,14 +344,14 @@ export const getAssetAdvice = async (category: string, type: string, location: s
 };
 
 export const estimateAssetSpecs = async (category: string, type: string, value: number) => {
-    if (ai) {
+    if (hasApiKey) {
         try {
-            const response = await ai.models.generateContent({
+            const result = await genAI.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: ESTIMATE_ASSET_SPECS_PROMPT(category, type, value),
                 config: { responseMimeType: 'application/json' }
             });
-            const parsed = parseAiJson(response.text || '{}');
+            const parsed = parseAiJson(result.text || '{}');
             if (parsed) return parsed;
         } catch (e) {
             console.error("AI Error", e);
@@ -440,13 +435,10 @@ export const analyzeAssetFinancials = async (data: AssetData): Promise<AiRespons
 // --- BUSINESS PLAN GENERATOR ---
 
 export const generateBusinessPlan = async (asset: AssetData, projectInfo: ProjectInfo): Promise<string> => {
-  if (ai) {
+  if (hasApiKey) {
       try {
-          const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: GENERATE_BUSINESS_PLAN_PROMPT(asset, projectInfo)
-          });
-          return response.text || "# Error\nCould not generate plan.";
+          const text = await askGemini(GENERATE_BUSINESS_PLAN_PROMPT(asset, projectInfo));
+          return text || "# Error\nCould not generate plan.";
       } catch (e) {
           console.error("AI Error", e);
       }
